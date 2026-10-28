@@ -2,13 +2,26 @@ name: ci
 
 on:
   pull_request:
-  push:
-    branches: [main]
+    branches: ["main"]
+  # The merge queue's build of the tree that will land: `main`, the entries
+  # ahead in the queue and this one. Every job runs ONLY there, as in
+  # alexandria-web-application (ALEXANDRIA-80). On `pull_request` each job is
+  # skipped at job level, so a push to a pull request starts no runner, and
+  # `quality_checks` reports the success the ruleset needs before the queue
+  # accepts the pull request: GitHub requires the same checks to enter the
+  # queue as the queue waits for, and offers no way to require them in one
+  # place only. A green pull request means nothing has been checked yet.
+  merge_group:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
     # The hooks run on the developers' machines, Linux and macOS, and read the
     # process table differently on each, so both run the tests.
+    if: ${{ github.event_name == 'merge_group' }}
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
@@ -21,6 +34,7 @@ jobs:
       - run: node --test 'plugins/**/*.test.ts'
 
   validate:
+    if: ${{ github.event_name == 'merge_group' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -31,3 +45,18 @@ jobs:
       # to main reaches the repositories that enable them, and the validator
       # warns about that.
       - run: npx --yes @anthropic-ai/claude-code@2.1.312 plugin validate .
+
+  # The one check the ruleset requires. It accepts only `success` from every
+  # job it needs, so a skipped or cancelled job fails the queue's build. Adding
+  # a job means adding it here, never to the ruleset.
+  quality_checks:
+    needs: [test, validate]
+    if: ${{ always() && github.event_name == 'merge_group' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every job succeeded
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          jq -r 'to_entries[] | "\(.value.result)\t\(.key)"' <<< "$NEEDS"
+          jq -e 'all(.[]; .result == "success")' <<< "$NEEDS" > /dev/null

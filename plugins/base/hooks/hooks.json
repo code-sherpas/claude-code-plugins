@@ -1,0 +1,27 @@
+{
+  "description": "Leave Nothing Running: an agent does not end its turn with a visible browser it opened still open without deciding it",
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/no-browser-left-open.sh\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/no-browser-left-open.sh\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

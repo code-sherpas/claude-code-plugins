@@ -1,0 +1,14 @@
+{
+  "name": "code-sherpas",
+  "description": "Claude Code plugins for every Code Sherpas repository",
+  "owner": {
+    "name": "Code Sherpas"
+  },
+  "plugins": [
+    {
+      "name": "base",
+      "source": "./plugins/base",
+      "description": "What every Code Sherpas repository enables: automated checks backing the software development standards"
+    }
+  ]
+}

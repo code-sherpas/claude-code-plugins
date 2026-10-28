@@ -1,0 +1,8 @@
+{
+  "name": "base",
+  "description": "What every Code Sherpas repository enables: automated checks backing the software development standards",
+  "author": {
+    "name": "Code Sherpas"
+  },
+  "repository": "https://github.com/code-sherpas/claude-code-plugins"
+}

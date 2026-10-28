@@ -1,0 +1,33 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    # The hooks run on the developers' machines, Linux and macOS, and read the
+    # process table differently on each, so both run the tests.
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: node --test 'plugins/**/*.test.ts'
+
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      # Not --strict: plugins deliberately carry no `version`, so every commit
+      # to main reaches the repositories that enable them, and the validator
+      # warns about that.
+      - run: npx --yes @anthropic-ai/claude-code@2.1.312 plugin validate .

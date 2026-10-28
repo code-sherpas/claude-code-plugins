@@ -1,0 +1,3 @@
+[submodule "plugins/base/agent-skills"]
+	path = plugins/base/agent-skills
+	url = https://github.com/code-sherpas/agent-skills.git

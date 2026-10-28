@@ -1,0 +1,12 @@
+# Keeps the agent-skills submodule of `base` on the latest commit of
+# code-sherpas/agent-skills, their single source of truth. Dependabot opens the
+# pull request, .github/workflows/enqueue-dependabot.yaml puts it in the merge
+# queue, and it lands once the queue's build passes: nobody has to review it.
+version: 2
+updates:
+  - package-ecosystem: gitsubmodule
+    directory: "/"
+    schedule:
+      interval: daily
+    commit-message:
+      prefix: "chore"

@@ -39,4 +39,4 @@ claude plugin validate .                # not --strict: the missing `version` is
 
 To try a change before merging, load the plugin from your checkout: `claude --plugin-dir ./plugins/base`.
 
-CI runs the tests on Linux and macOS, where the hooks run, and validates the marketplace.
+CI runs the tests on Linux and macOS, where the hooks run, and validates the marketplace — **only in the merge queue**, as in alexandria-web-application: a push to a pull request runs nothing, and a green pull request means nothing has been checked yet. A pull request reaches `main` through the queue (`gh pr merge <n>`, never `--auto`), whose build of the tree that will land must pass `quality_checks`.

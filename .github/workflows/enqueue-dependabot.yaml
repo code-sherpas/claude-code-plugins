@@ -1,10 +1,16 @@
 name: enqueue-dependabot
 
-# Dependabot's pull requests move the agent-skills submodule to the latest
-# commit of code-sherpas/agent-skills. They land with nobody reviewing them:
-# this puts each one in the merge queue, where `quality_checks` builds the tree
-# that will land, and the skills test in it stands in for the reviewer. A build
-# that fails leaves the pull request out of the queue, open, for a person.
+# Moves the agent-skills submodule to the latest commit of
+# code-sherpas/agent-skills with nobody reviewing it: this puts Dependabot's
+# pull request in the merge queue, where `quality_checks` builds the tree that
+# will land and the skills test in it stands in for the reviewer.
+#
+# It enqueues THAT pull request and nothing else. Being opened by Dependabot is
+# not enough: another ecosystem added to dependabot.yml, or a security update
+# switched on in the repository's settings, would also open pull requests as
+# dependabot[bot] — and those may change workflows or code. So it enqueues only
+# a pull request that changes exactly one file, plugins/base/agent-skills, and
+# only its submodule pointer. Anything else stays open for a person.
 
 on:
   pull_request:
@@ -16,9 +22,24 @@ permissions:
 
 jobs:
   enqueue:
-    if: ${{ github.event.pull_request.user.login == 'dependabot[bot]' }}
+    if: >-
+      ${{ github.event.pull_request.user.login == 'dependabot[bot]'
+          && startsWith(github.event.pull_request.head.ref, 'dependabot/submodules/') }}
     runs-on: ubuntu-latest
     steps:
+      - name: Only the agent-skills submodule pointer changes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          files="$(gh api "repos/$REPO/pulls/$PR/files" --paginate --jq '.[].filename')"
+          echo "Changed files:"; echo "$files"
+          [ "$files" = "plugins/base/agent-skills" ] || { echo "::notice::Not only the agent-skills submodule: left for a person."; exit 1; }
+          mode="$(gh api "repos/$REPO/contents/plugins/base/agent-skills?ref=$HEAD" --jq '.type')"
+          [ "$mode" = "submodule" ] || { echo "::notice::plugins/base/agent-skills is not a submodule at $HEAD: left for a person."; exit 1; }
       - name: Put the pull request in the merge queue
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

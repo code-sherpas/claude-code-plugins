@@ -1,0 +1,26 @@
+name: enqueue-dependabot
+
+# Dependabot's pull requests move the agent-skills submodule to the latest
+# commit of code-sherpas/agent-skills. They land with nobody reviewing them:
+# this puts each one in the merge queue, where `quality_checks` builds the tree
+# that will land, and the skills test in it stands in for the reviewer. A build
+# that fails leaves the pull request out of the queue, open, for a person.
+
+on:
+  pull_request:
+    branches: ["main"]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  enqueue:
+    if: ${{ github.event.pull_request.user.login == 'dependabot[bot]' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Put the pull request in the merge queue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: gh pr merge --auto "$PR_URL"

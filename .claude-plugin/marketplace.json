@@ -8,7 +8,7 @@
     {
       "name": "base",
       "source": "./plugins/base",
-      "description": "What every Code Sherpas repository enables: automated checks backing the software development standards"
+      "description": "What every Code Sherpas repository enables: the checks backing the software development standards, and the Code Sherpas agent skills"
     }
   ]
 }

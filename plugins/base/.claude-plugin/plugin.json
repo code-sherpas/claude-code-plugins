@@ -1,8 +1,11 @@
 {
   "name": "base",
-  "description": "What every Code Sherpas repository enables: automated checks backing the software development standards",
+  "description": "What every Code Sherpas repository enables: the checks backing the software development standards, and the Code Sherpas agent skills",
   "author": {
     "name": "Code Sherpas"
   },
-  "repository": "https://github.com/code-sherpas/claude-code-plugins"
+  "repository": "https://github.com/code-sherpas/claude-code-plugins",
+  "skills": [
+    "./agent-skills/skills/"
+  ]
 }

@@ -1,0 +1,14 @@
+# Operating systems and editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Node, in case a plugin ever needs packages: the tests run without any today
+node_modules/
+npm-debug.log*
+
+# Claude Code: per-machine settings and the scratch a session leaves behind
+.claude/settings.local.json
+.playwright-mcp/

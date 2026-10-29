@@ -1,5 +1,5 @@
 {
-  "description": "Leave Nothing Running: an agent does not end its turn with a visible browser it opened still open without deciding it",
+  "description": "Automated checks for agents working in Code Sherpas repositories. Each hook's own message says what it found, what to do about it, and the rule behind it.",
   "hooks": {
     "Stop": [
       {

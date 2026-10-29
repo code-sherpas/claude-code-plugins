@@ -11,14 +11,22 @@ name: enqueue-dependabot
 # dependabot[bot] — and those may change workflows or code. So it enqueues only
 # a pull request that changes exactly one file, plugins/base/agent-skills, and
 # only its submodule pointer. Anything else stays open for a person.
+#
+# It enqueues as the code-sherpas-plugins-sync GitHub App, not with the
+# workflow's GITHUB_TOKEN: GitHub runs no workflow for an event the
+# GITHUB_TOKEN caused, and the merge queue's build is a workflow. Measured
+# 2026-10-29 (#6): enqueued with the GITHUB_TOKEN, the entry sat in
+# AWAITING_CHECKS and no build started. The App's ID and private key are
+# *Dependabot* secrets, because a run Dependabot triggered sees no others.
 
 on:
   pull_request:
     branches: ["main"]
 
+# The workflow's own token only reads; the App's token is the one that writes.
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
+  pull-requests: read
 
 jobs:
   enqueue:
@@ -40,8 +48,14 @@ jobs:
           [ "$files" = "plugins/base/agent-skills" ] || { echo "::notice::Not only the agent-skills submodule: left for a person."; exit 1; }
           mode="$(gh api "repos/$REPO/contents/plugins/base/agent-skills?ref=$HEAD" --jq '.type')"
           [ "$mode" = "submodule" ] || { echo "::notice::plugins/base/agent-skills is not a submodule at $HEAD: left for a person."; exit 1; }
+      - name: Get a token of the code-sherpas-plugins-sync App
+        id: app
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.PLUGINS_SYNC_APP_ID }}
+          private-key: ${{ secrets.PLUGINS_SYNC_APP_PRIVATE_KEY }}
       - name: Put the pull request in the merge queue
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app.outputs.token }}
           PR_URL: ${{ github.event.pull_request.html_url }}
         run: gh pr merge --auto "$PR_URL"

@@ -12,7 +12,7 @@ name: enqueue-dependabot
 # a pull request that changes exactly one file, plugins/base/agent-skills, and
 # only its submodule pointer. Anything else stays open for a person.
 #
-# It enqueues as the code-sherpas-plugins-sync GitHub App, not with the
+# It enqueues as the agent-plugins-updater GitHub App, not with the
 # workflow's GITHUB_TOKEN: GitHub runs no workflow for an event the
 # GITHUB_TOKEN caused, and the merge queue's build is a workflow. Measured
 # 2026-10-29 (#6): enqueued with the GITHUB_TOKEN, the entry sat in
@@ -48,12 +48,12 @@ jobs:
           [ "$files" = "plugins/base/agent-skills" ] || { echo "::notice::Not only the agent-skills submodule: left for a person."; exit 1; }
           mode="$(gh api "repos/$REPO/contents/plugins/base/agent-skills?ref=$HEAD" --jq '.type')"
           [ "$mode" = "submodule" ] || { echo "::notice::plugins/base/agent-skills is not a submodule at $HEAD: left for a person."; exit 1; }
-      - name: Get a token of the code-sherpas-plugins-sync App
+      - name: Get a token of the agent-plugins-updater App
         id: app
         uses: actions/create-github-app-token@v2
         with:
-          app-id: ${{ secrets.PLUGINS_SYNC_APP_ID }}
-          private-key: ${{ secrets.PLUGINS_SYNC_APP_PRIVATE_KEY }}
+          app-id: ${{ secrets.AGENT_PLUGINS_UPDATER_APP_ID }}
+          private-key: ${{ secrets.AGENT_PLUGINS_UPDATER_PRIVATE_KEY }}
       - name: Put the pull request in the merge queue
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}

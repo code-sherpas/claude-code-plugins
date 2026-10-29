@@ -1,0 +1,14 @@
+{
+  "extraKnownMarketplaces": {
+    "code-sherpas": {
+      "source": {
+        "source": "github",
+        "repo": "code-sherpas/claude-code-plugins"
+      },
+      "autoUpdate": true
+    }
+  },
+  "enabledPlugins": {
+    "base@code-sherpas": true
+  }
+}

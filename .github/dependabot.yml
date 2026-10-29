@@ -8,5 +8,13 @@ updates:
     directory: "/"
     schedule:
       interval: daily
+    # Dependabot waits 3 days before taking any new version, by default and
+    # without being asked (measured 2026-10-29: «Filtered out 2 versions due to
+    # cooldown»). That guards against a third party's compromised release;
+    # agent-skills is ours, and what lands from it is gated by the skills test
+    # in the merge queue. Excluded from the cooldown, a change to a skill
+    # reaches every session in under a day instead of three to four.
+    cooldown:
+      exclude: ["*"]
     commit-message:
       prefix: "chore"

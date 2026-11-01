@@ -1,6 +1,6 @@
 {
   "name": "base",
-  "description": "What every Code Sherpas repository enables: the checks backing the software development standards, and the Code Sherpas agent skills",
+  "description": "What every Code Sherpas repository enables: it runs the checks the software development standards declare, and brings the Code Sherpas agent skills",
   "author": {
     "name": "Code Sherpas"
   },

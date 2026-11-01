@@ -1,13 +1,13 @@
 {
-  "description": "Automated checks for agents working in Code Sherpas repositories. Each hook's own message says what it found, what to do about it, and the rule behind it.",
+  "description": "Runs the automated checks of the Code Sherpas software development standards. The checks are not here: each one lives next to the standard it backs, in code-sherpas/software-development-standards, whose checks/checks.tsv says which runs on which event. Each check's message names its standard and links it.",
   "hooks": {
     "Stop": [
       {
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/no-browser-left-open.sh\"",
-            "timeout": 10
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/run-standards-checks.sh\" Stop",
+            "timeout": 30
           }
         ]
       }
@@ -17,8 +17,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/no-browser-left-open.sh\"",
-            "timeout": 10
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/run-standards-checks.sh\" SubagentStop",
+            "timeout": 30
           }
         ]
       }

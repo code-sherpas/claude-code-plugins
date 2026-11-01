@@ -107,7 +107,14 @@ describe("run-standards-checks hook", () => {
     const { answer } = run("Stop", { stopHookActive: true });
 
     assert.equal(answer.decision, undefined);
-    assert.equal(answer.systemMessage, `${from("A", "a.md")}still there.`);
+    // For the person, who did not see what the agent was told: what happened,
+    // what to look for in the reply, and then the finding itself.
+    assert.equal(
+      answer.systemMessage,
+      "The agent ended its turn although a check of the Code Sherpas standards still finds what it was stopped once " +
+        "to decide on. Its reply should say what it kept and why. If it does not, ask it, or see to it yourself. " +
+        `What the agent was told:\n\n${from("A", "a.md")}still there.`,
+    );
   });
 
   it("gives a check the hook input on stdin", () => {

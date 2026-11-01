@@ -19,8 +19,8 @@ concurrency:
 
 jobs:
   test:
-    # The hooks run on the developers' machines, Linux and macOS, and read the
-    # process table differently on each, so both run the tests.
+    # The hooks run on the developers' machines, Linux and macOS, whose shell
+    # tools (sed, awk, curl, bash 3.2 on macOS) differ, so both run the tests.
     if: ${{ github.event_name == 'merge_group' }}
     strategy:
       matrix:

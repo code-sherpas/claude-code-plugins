@@ -25,7 +25,9 @@
 # finding stops the turn once, so the agent decides. When Claude Code sets
 # `stop_hook_active` because the turn went on after this hook, findings only
 # warn, so a check whose finding the agent cannot clear never traps the
-# session. A check that fails (non-zero exit) is reported and never stops
+# session. That warning is for the person, not the agent: it says the agent
+# ended its turn with the finding still there, what to look for in its reply,
+# and then quotes what the agent was told. A check that fails (non-zero exit) is reported and never stops
 # anything.
 #
 # For run-standards-checks.test.ts, next to this file: `STANDARDS_BASE_URL`
@@ -116,6 +118,11 @@ This will not stop the turn again."
   exit 0
 fi
 
+if [ -n "$findings" ]; then
+  findings="The agent ended its turn although a check of the Code Sherpas standards still finds what it was stopped once to decide on. Its reply should say what it kept and why. If it does not, ask it, or see to it yourself. What the agent was told:
+
+$findings"
+fi
 message="$(joined "$findings" "$problems")"
 [ -n "$message" ] && printf '{"systemMessage":"%s"}\n' "$(json "$message")"
 exit 0

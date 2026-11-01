@@ -11,6 +11,12 @@
 # they report into Claude Code's answer. So a check is added, changed or
 # removed there, and this plugin never changes for it.
 #
+# A check reports only what it found. Before each finding this runner puts
+# the name and the link of the standard the manifest says it backs. The name
+# is the standard's first `# ` heading, downloaded and kept like the scripts.
+# So the agent always has the whole rule at hand, and no check can forget to
+# link it.
+#
 # Downloads have a short timeout. Each copy is kept, and when GitHub cannot be
 # reached the last copy is used. With no copy at all, nothing runs: the hook
 # only warns, and never stops the turn.
@@ -70,6 +76,10 @@ if fetch "checks/checks.tsv"; then
       problems="$(joined "$problems" "checks.tsv names \"$script\", which is not a check script path; it did not run.")"
       continue
     fi
+    if ! printf '%s' "$standard" | grep -Eq '^[a-z0-9-]+\.md$'; then
+      problems="$(joined "$problems" "checks.tsv says \"$script\" backs \"$standard\", which is not a standard's file name; it did not run.")"
+      continue
+    fi
     if ! fetch "$script"; then
       problems="$(joined "$problems" "$script (${standard}) could not be downloaded and no earlier copy is kept; it did not run.")"
       continue
@@ -79,7 +89,9 @@ if fetch "checks/checks.tsv"; then
     if [ "$status" -ne 0 ]; then
       problems="$(joined "$problems" "$script (${standard}) failed with exit status $status; what it checks was not checked.")"
     elif [ -n "$output" ]; then
-      findings="$(joined "$findings" "$output")"
+      title=""
+      fetch "$standard" && title="$(sed -n 's/^# //p' "$cache/$standard" | head -1)"
+      findings="$(joined "$findings" "${title:-$standard} ($base/$standard): $output")"
     fi
   done < "$cache/checks/checks.tsv"
 else

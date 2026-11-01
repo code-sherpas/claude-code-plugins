@@ -17,7 +17,9 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 // check stops running and nothing says so. Trapped means a session cannot end
 // its turn. Each test serves a fake standards repository from a `file://`
 // URL (STANDARDS_BASE_URL) and keeps the downloaded copies in a temporary
-// directory (STANDARDS_CHECKS_CACHE).
+// directory (STANDARDS_CHECKS_CACHE). A check reports only what it found: the
+// runner puts the standard's name and link in front, so the agent always
+// has the whole rule at hand.
 
 const RUNNER = join(dirname(fileURLToPath(import.meta.url)), "run-standards-checks.sh");
 const SESSION = "821b8d62-63eb-4657-a5fc-9b5ecec50eb8";
@@ -42,6 +44,11 @@ function publish(files: Record<string, string>): void {
     mkdirSync(dirname(join(repository, path)), { recursive: true });
     writeFileSync(join(repository, path), content);
   }
+}
+
+/** How the runner introduces a finding of a check backing `standard`. */
+function from(title: string, standard: string, base = repository): string {
+  return `${title} (${pathToFileURL(base).href}/${standard}): `;
 }
 
 function manifest(...lines: string[]): string {
@@ -76,26 +83,31 @@ describe("run-standards-checks hook", () => {
   it("stops the turn once with what a check of the event found", () => {
     publish({
       "checks/checks.tsv": manifest("Stop\tleave-nothing-running.md\tchecks/leave-nothing-running/browser.sh"),
-      "checks/leave-nothing-running/browser.sh": reporting("Leave Nothing Running (url): PID 41 is open."),
+      "checks/leave-nothing-running/browser.sh": reporting("PID 41 is open."),
+      "leave-nothing-running.md": "# Leave Nothing Running\n\n## Goal\n",
     });
 
     const { status, answer } = run("Stop");
 
     assert.equal(status, 0);
     assert.equal(answer.decision, "block");
-    assert.match(answer.reason ?? "", /^Leave Nothing Running \(url\): PID 41 is open\.\n\nThis will not stop the turn again\.$/);
+    assert.equal(
+      answer.reason,
+      `${from("Leave Nothing Running", "leave-nothing-running.md")}PID 41 is open.\n\nThis will not stop the turn again.`,
+    );
   });
 
   it("only warns once the turn already went on because of it, so it never traps the session", () => {
     publish({
       "checks/checks.tsv": manifest("Stop\ta.md\tchecks/a/check.sh"),
-      "checks/a/check.sh": reporting("A (url): still there."),
+      "checks/a/check.sh": reporting("still there."),
+      "a.md": "# A\n",
     });
 
     const { answer } = run("Stop", { stopHookActive: true });
 
     assert.equal(answer.decision, undefined);
-    assert.equal(answer.systemMessage, "A (url): still there.");
+    assert.equal(answer.systemMessage, `${from("A", "a.md")}still there.`);
   });
 
   it("gives a check the hook input on stdin", () => {
@@ -104,7 +116,7 @@ describe("run-standards-checks hook", () => {
       "checks/a/check.sh": `sed -n 's/.*"session_id":"\\([^"]*\\)".*/session \\1/p'\n`,
     });
 
-    assert.match(run("Stop").answer.reason ?? "", new RegExp(`^session ${SESSION}`));
+    assert.ok(run("Stop").answer.reason?.startsWith(`${from("a.md", "a.md")}session ${SESSION}\n`));
   });
 
   it("runs only the checks listed for its event, each once", () => {
@@ -120,8 +132,11 @@ describe("run-standards-checks hook", () => {
       "checks/b/two.sh": reporting("from two"),
     });
 
-    assert.equal(run("Stop").answer.reason, "from one\n\nfrom two\n\nThis will not stop the turn again.");
-    assert.match(run("SubagentStop").answer.reason ?? "", /^from sub\n/);
+    assert.equal(
+      run("Stop").answer.reason,
+      `${from("a.md", "a.md")}from one\n\n${from("b.md", "b.md")}from two\n\nThis will not stop the turn again.`,
+    );
+    assert.ok(run("SubagentStop").answer.reason?.startsWith(`${from("a.md", "a.md")}from sub\n`));
   });
 
   it("lets the turn end in silence when no check finds anything", () => {
@@ -143,7 +158,8 @@ describe("run-standards-checks hook", () => {
     const { answer } = run("Stop", { reachable: false });
 
     assert.equal(answer.decision, "block");
-    assert.match(answer.reason ?? "", /^found offline/);
+    // The link still points at the repository: the agent reads it when it can.
+    assert.ok(answer.reason?.startsWith(`${from("a.md", "a.md", join(workspace, "unreachable"))}found offline`));
     assert.equal(answer.systemMessage, undefined);
   });
 
@@ -176,7 +192,7 @@ describe("run-standards-checks hook", () => {
     const { answer } = run("Stop");
 
     assert.equal(answer.decision, "block");
-    assert.match(answer.reason ?? "", /^B found it/);
+    assert.ok(answer.reason?.startsWith(`${from("b.md", "b.md")}B found it`));
     assert.match(answer.systemMessage ?? "", /checks\/a\/broken\.sh \(a\.md\) failed with exit status 3/);
   });
 
@@ -200,6 +216,28 @@ describe("run-standards-checks hook", () => {
       "checks/a/check.sh": `cat > /dev/null\nprintf 'say "hi" \\\\ there\\tnow\\n'\n`,
     });
 
-    assert.match(run("Stop").answer.reason ?? "", /^say "hi" \\ there now\n/);
+    assert.ok(run("Stop").answer.reason?.startsWith(`${from("a.md", "a.md")}say "hi" \\ there now\n`));
+  });
+  it("names a standard it cannot download by its file name, and still links it", () => {
+    publish({
+      "checks/checks.tsv": manifest("Stop\tleave-nothing-running.md\tchecks/leave-nothing-running/check.sh"),
+      "checks/leave-nothing-running/check.sh": reporting("found"),
+    });
+
+    assert.ok(
+      run("Stop").answer.reason?.startsWith(`${from("leave-nothing-running.md", "leave-nothing-running.md")}found\n`),
+    );
+  });
+
+  it("never fetches anything for a standard that is not a standard's file name", () => {
+    publish({
+      "checks/checks.tsv": manifest("Stop\t../secret\tchecks/a/check.sh"),
+      "checks/a/check.sh": reporting("found"),
+    });
+
+    const { answer } = run("Stop");
+
+    assert.equal(answer.decision, undefined);
+    assert.match(answer.systemMessage ?? "", /which is not a standard's file name; it did not run/);
   });
 });

@@ -1,5 +1,5 @@
 {
-  "description": "Runs the automated checks of the Code Sherpas software development standards. The checks are not here: each one lives next to the standard it backs, in code-sherpas/software-development-standards, whose checks/checks.tsv says which runs on which event. Each check's message names its standard and links it.",
+  "description": "Two jobs. Before any work, every agent and sub-agent reads the index of the Code Sherpas software development standards: it is downloaded at each start, and every other tool is refused until it is read. At the end of a turn, the automated checks the standards declare run; each check lives next to the standard it backs, in code-sherpas/software-development-standards, whose checks/checks.tsv says which runs on which event, and each check's message names its standard and links it.",
   "hooks": {
     "Stop": [
       {
@@ -19,6 +19,51 @@
             "type": "command",
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/run-standards-checks.sh\" SubagentStop",
             "timeout": 30
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/require-standards-index.sh\" SessionStart",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/require-standards-index.sh\" SubagentStart",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/require-standards-index.sh\" PreToolUse",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/require-standards-index.sh\" PostToolUse",
+            "timeout": 10
           }
         ]
       }

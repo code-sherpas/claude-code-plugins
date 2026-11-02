@@ -33,7 +33,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - run: node --test 'plugins/**/*.test.ts'
+      - run: node --test 'plugins/**/*.test.ts' 'tools/**/*.test.ts'
 
   validate:
     if: ${{ github.event_name == 'merge_group' }}

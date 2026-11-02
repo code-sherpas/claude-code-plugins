@@ -12,6 +12,14 @@ The Claude Code marketplace of Code Sherpas: hooks, and anything else Claude Cod
 
 **The skills live in [code-sherpas/agent-skills](https://github.com/code-sherpas/agent-skills)**, their single source of truth, in the [Agent Skills](https://agentskills.io/specification) format. `plugins/base/agent-skills` is a git submodule pointing at a commit of that repository, never a copy. Dependabot moves it to the latest commit every day, `.github/workflows/enqueue-dependabot.yaml` puts that pull request in the merge queue as the `agent-plugins-updater` GitHub App (the workflow's own token cannot: GitHub starts no workflow, the queue's build included, for what that token does), and it lands once the queue's build passes — with nobody reviewing it. **The workflow enqueues that pull request and nothing else**: being opened by Dependabot is not enough, since another ecosystem or a security update would open pull requests as Dependabot too. It enqueues only one from a `dependabot/submodules/` branch that changes exactly `plugins/base/agent-skills`, and only as a submodule pointer; any other stays open for a person. `plugins/base/skills.test.ts` stands in for the reviewer: every skill must keep to the specification, or the pull request stays out of `main`, open, for a person. Change a skill in agent-skills, never here.
 
+## Tools
+
+Not part of any plugin: they run by hand, from a checkout of this repository.
+
+| Tool | What it does |
+| :- | :- |
+| [`tools/session-usage`](tools/session-usage/README.md) | How the Claude Code sessions of one project spent their tokens, read from the transcripts on this machine: context per call, length of sessions, cache rewrites, subagents, who read every standard. Used to compare before and after a change to how agents work. |
+
 ## Enable it
 
 It takes two steps, and they do different jobs: **each machine installs `base` once, switched off; each repository switches it on.** So it runs in Code Sherpas repositories, and nowhere else.
@@ -48,7 +56,7 @@ Project settings take precedence over user settings, so `true` here switches on 
 
 ```bash
 git submodule update --init             # the skills, from agent-skills
-node --test 'plugins/**/*.test.ts'      # Node 24 or later: runs TypeScript as is
+node --test 'plugins/**/*.test.ts' 'tools/**/*.test.ts'   # Node 24 or later: runs TypeScript as is
 claude plugin validate .                # not --strict: the missing `version` is a warning on purpose
 ```
 

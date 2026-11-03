@@ -73,7 +73,26 @@ export type Report = {
   /** null when the standards' names were not given. */
   standardsLoaded: { sessions: number; subagents: number } | null;
   readChars: Record<ReadOrigin, number>;
+  readImages: Record<ReadOrigin, number>;
 };
+
+/**
+ * What a Read returned: the characters of its text, and how many images.
+ * An image is not counted by its base64: the model sees a screenshot as some
+ * 1,500 tokens whatever its encoded size, and counting the base64 once made
+ * screenshots look like 60 million characters of logs.
+ */
+export function sizeOfRead(content: unknown): { chars: number; images: number } {
+  if (typeof content === "string") return { chars: content.length, images: 0 };
+  if (!Array.isArray(content)) return { chars: 0, images: 0 };
+  let chars = 0;
+  let images = 0;
+  for (const block of content) {
+    if (block?.type === "image") images += 1;
+    else if (typeof block?.text === "string") chars += block.text.length;
+  }
+  return { chars, images };
+}
 
 /** Every transcript of the project: sessions, and the subagents each one ran. */
 export function transcriptsOf(projectsDir: string, project: string): Transcript[] {
@@ -135,6 +154,7 @@ export async function analyze({ projectsDir, project, from, to, standardNames }:
   const calls: Call[] = [];
   const seen = new Set<string>();
   const readChars: Record<ReadOrigin, number> = { standards: 0, tmp: 0, claude: 0, node_modules: 0, other: 0 };
+  const readImages: Record<ReadOrigin, number> = { standards: 0, tmp: 0, claude: 0, node_modules: 0, other: 0 };
   let compactions = 0;
   const loaders = { sessions: new Set<string>(), subagents: new Set<string>() };
 
@@ -199,7 +219,10 @@ export async function analyze({ projectsDir, project, from, to, standardNames }:
       } else if (entry.type === "user") {
         for (const block of content) {
           if (block?.type !== "tool_result" || !readPaths.has(block.tool_use_id)) continue;
-          readChars[originOf(readPaths.get(block.tool_use_id) ?? "", standardNames)] += JSON.stringify(block.content ?? "").length;
+          const origin = originOf(readPaths.get(block.tool_use_id) ?? "", standardNames);
+          const read = sizeOfRead(block.content);
+          readChars[origin] += read.chars;
+          readImages[origin] += read.images;
         }
       }
     }
@@ -216,6 +239,7 @@ export async function analyze({ projectsDir, project, from, to, standardNames }:
     calls,
     compactions,
     readChars,
+    readImages,
     loaders: standardNames.size > 0 ? loaders : null,
   });
 }
@@ -228,6 +252,7 @@ function summarize(input: {
   calls: Call[];
   compactions: number;
   readChars: Record<ReadOrigin, number>;
+  readImages: Record<ReadOrigin, number>;
   loaders: { sessions: Set<string>; subagents: Set<string> } | null;
 }): Report {
   const { calls } = input;
@@ -299,6 +324,7 @@ function summarize(input: {
     compactions: input.compactions,
     standardsLoaded: input.loaders && { sessions: input.loaders.sessions.size, subagents: input.loaders.subagents.size },
     readChars: input.readChars,
+    readImages: input.readImages,
   };
 }
 
@@ -332,6 +358,7 @@ export function toMarkdown(report: Report): string {
       report.standardsLoaded ? `${n(report.standardsLoaded.sessions)} / ${n(report.standardsLoaded.subagents)}` : "n/a: pass --standards-dir"
     } |`,
     `| Characters read, by origin: standards / /tmp / ~/.claude / node_modules / other | ${(["standards", "tmp", "claude", "node_modules", "other"] as const).map((origin) => m(report.readChars[origin])).join(" / ")} |`,
+    `| Images read, by origin: standards / /tmp / ~/.claude / node_modules / other | ${(["standards", "tmp", "claude", "node_modules", "other"] as const).map((origin) => n(report.readImages[origin])).join(" / ")} |`,
     "",
   ].join("\n");
 }

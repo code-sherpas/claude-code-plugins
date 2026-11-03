@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
-import { analyze, originOf, toMarkdown } from "./session-usage.ts";
+import { analyze, originOf, sizeOfRead, toMarkdown } from "./session-usage.ts";
 
 // Why this test exists.
 //
@@ -197,10 +197,19 @@ describe("session-usage", () => {
       result("2026-10-20T10:00:01Z", "c", "z".repeat(8)),
     ]);
 
-    const { readChars } = await measure();
+    const { readChars, readImages } = await measure();
 
-    // Each result counts as its JSON text, quotes included.
-    assert.deepEqual(readChars, { standards: 100, tmp: 50, claude: 0, node_modules: 0, other: 10 });
+    assert.deepEqual(readChars, { standards: 98, tmp: 48, claude: 0, node_modules: 0, other: 8 });
+    assert.deepEqual(readImages, { standards: 0, tmp: 0, claude: 0, node_modules: 0, other: 0 });
+  });
+
+  it("counts an image read as one image, never by its base64", () => {
+    const screenshot = [
+      { type: "image", source: { type: "base64", media_type: "image/png", data: "A".repeat(400_000) } },
+      { type: "text", text: "caption" },
+    ];
+    assert.deepEqual(sizeOfRead(screenshot), { chars: 7, images: 1 });
+    assert.deepEqual(sizeOfRead("plain text"), { chars: 10, images: 0 });
   });
 
   it("files a read under the standards by its name, then by where it lives", () => {

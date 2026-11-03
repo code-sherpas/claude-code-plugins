@@ -43,7 +43,8 @@ The shares use those weights.
 | Whole-context rewrite | A call with more than 60,000 tokens of context, more than 60 % of them written to the cache: the cache had expired, or the context is new. They are grouped by the pause since the same transcript's previous call. **Start** is a transcript's first call, such as a subagent starting. Under 5 minutes, the cache should still have been there. 5 to 60 minutes means a 5-minute cache expired. Over an hour, a 1-hour cache did too. |
 | Subagents | A subagent's transcript, `<session>/subagents/*.jsonl`, counts toward the session that ran it, and its share is also given apart. |
 | Read every standard | A session or subagent that read at least 20 distinct standards, either by their URL or as a file of the same name. Agents download the standards into their scratchpad and then `Read` them. |
-| Characters read, by origin | The size of what the `Read` tool returned, by where the file was: a standard (by name), `/tmp`, `~/.claude`, `node_modules`, or anything else. |
+| Characters read, by origin | The characters of text the `Read` tool returned, by where the file was: a standard (by name), `/tmp`, `~/.claude`, `node_modules`, or anything else. |
+| Images read, by origin | How many images the `Read` tool returned, such as screenshots, by the same origins. An image counts once, not by its encoded size: the model sees a screenshot as some 1,500 tokens. Before 2026-11-03 images were counted as characters of their base64, which made `/tmp` look like tens of millions of characters of logs. |
 | Compactions | Times the context was summarised to make room. |
 
 ## What it cannot see

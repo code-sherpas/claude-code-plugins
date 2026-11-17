@@ -20,6 +20,11 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 // directory (STANDARDS_CHECKS_CACHE). A check reports only what it found: the
 // runner puts the standard's name and link in front, so the agent always
 // has the whole rule at hand.
+//
+// Before a tool call (`PreToolUse`) a finding asks the person, even in auto
+// mode, and the runner never downloads anything there: it runs on every tool
+// call. It runs the copies `prefetch` keeps at the start of a session and
+// every end of a turn refreshes.
 
 const RUNNER = join(dirname(fileURLToPath(import.meta.url)), "run-standards-checks.sh");
 const SESSION = "821b8d62-63eb-4657-a5fc-9b5ecec50eb8";
@@ -62,12 +67,23 @@ function reporting(message: string): string {
 
 const SILENT = "cat > /dev/null\n";
 
+type Answer = {
+  decision?: string;
+  reason?: string;
+  systemMessage?: string;
+  hookSpecificOutput?: { hookEventName?: string; permissionDecision?: string; permissionDecisionReason?: string };
+};
+
 function run(
   event: string,
-  { stopHookActive = false, reachable = true } = {},
-): { status: number | null; answer: { decision?: string; reason?: string; systemMessage?: string } } {
+  { stopHookActive = false, reachable = true, tool = "Bash" } = {},
+): { status: number | null; answer: Answer } {
+  const input =
+    event === "PreToolUse"
+      ? { session_id: SESSION, hook_event_name: event, tool_name: tool, tool_input: {} }
+      : { session_id: SESSION, hook_event_name: event, stop_hook_active: stopHookActive };
   const result = spawnSync("bash", [RUNNER, event], {
-    input: JSON.stringify({ session_id: SESSION, hook_event_name: event, stop_hook_active: stopHookActive }),
+    input: JSON.stringify(input),
     env: {
       ...process.env,
       STANDARDS_BASE_URL: pathToFileURL(reachable ? repository : join(workspace, "unreachable")).href,
@@ -77,6 +93,13 @@ function run(
   });
   assert.equal(result.stderr, "");
   return { status: result.status, answer: result.stdout.trim() === "" ? {} : JSON.parse(result.stdout) };
+}
+
+const ARCHIVE = "mcp__ccd_session_mgmt__archive_session";
+
+/** A check that reports `message` when the tool about to run is `tool`. */
+function before(tool: string, message: string): string {
+  return `[ "$(jq -r '.tool_name')" = ${JSON.stringify(tool)} ] && printf '%s\\n' ${JSON.stringify(message)}\nexit 0\n`;
 }
 
 describe("run-standards-checks hook", () => {
@@ -246,5 +269,101 @@ describe("run-standards-checks hook", () => {
 
     assert.equal(answer.decision, undefined);
     assert.match(answer.systemMessage ?? "", /which is not a standard's file name; it did not run/);
+  });
+
+  describe("before a tool call", () => {
+    it("asks the person, with the standard and what the check found, when a check finds something", () => {
+      publish({
+        "checks/checks.tsv": manifest(
+          "PreToolUse\tleave-nothing-running.md\tchecks/leave-nothing-running/ask-before-archiving.sh",
+        ),
+        "checks/leave-nothing-running/ask-before-archiving.sh": before(ARCHIVE, "Archiving also archives its sessions."),
+        "leave-nothing-running.md": "# Leave Nothing Running\n",
+      });
+      run("prefetch");
+
+      const { status, answer } = run("PreToolUse", { tool: ARCHIVE });
+
+      assert.equal(status, 0);
+      assert.deepEqual(answer, {
+        hookSpecificOutput: {
+          hookEventName: "PreToolUse",
+          permissionDecision: "ask",
+          permissionDecisionReason: `${from("Leave Nothing Running", "leave-nothing-running.md")}Archiving also archives its sessions.`,
+        },
+      });
+    });
+
+    it("says nothing when no check finds anything, so the call goes on as it would", () => {
+      publish({
+        "checks/checks.tsv": manifest("PreToolUse\ta.md\tchecks/a/check.sh"),
+        "checks/a/check.sh": before(ARCHIVE, "found"),
+      });
+      run("prefetch");
+
+      assert.deepEqual(run("PreToolUse", { tool: "Bash" }), { status: 0, answer: {} });
+    });
+
+    it("reports a check that fails instead of asking for it, and still runs the others", () => {
+      publish({
+        "checks/checks.tsv": manifest("PreToolUse\ta.md\tchecks/a/broken.sh", "PreToolUse\tb.md\tchecks/b/check.sh"),
+        "checks/a/broken.sh": "cat > /dev/null\nexit 3\n",
+        "checks/b/check.sh": SILENT,
+      });
+      run("prefetch");
+
+      const { status, answer } = run("PreToolUse");
+
+      assert.equal(status, 0);
+      assert.equal(answer.hookSpecificOutput, undefined);
+      assert.match(answer.systemMessage ?? "", /checks\/a\/broken\.sh \(a\.md\) failed with exit status 3/);
+    });
+
+    it("never downloads: it runs the copy kept, and nothing when there is none", () => {
+      publish({
+        "checks/checks.tsv": manifest("PreToolUse\ta.md\tchecks/a/check.sh"),
+        "checks/a/check.sh": reporting("kept rule"),
+      });
+
+      assert.deepEqual(run("PreToolUse"), { status: 0, answer: {} });
+
+      run("prefetch");
+      publish({ "checks/a/check.sh": SILENT });
+
+      assert.equal(run("PreToolUse").answer.hookSpecificOutput?.permissionDecisionReason, `${from("a.md", "a.md")}kept rule`);
+    });
+
+    it("gets what main serves now at the end of a turn, which never runs those checks itself", () => {
+      publish({
+        "checks/checks.tsv": manifest("PreToolUse\ta.md\tchecks/a/check.sh"),
+        "checks/a/check.sh": SILENT,
+      });
+      run("prefetch");
+      publish({ "checks/a/check.sh": reporting("new rule"), "a.md": "# A\n" });
+
+      assert.deepEqual(run("Stop"), { status: 0, answer: {} });
+      assert.equal(run("PreToolUse").answer.hookSpecificOutput?.permissionDecisionReason, `${from("A", "a.md")}new rule`);
+    });
+
+    it("leaves it to the end of the turn to say a check could not be kept", () => {
+      publish({ "checks/checks.tsv": manifest("PreToolUse\ta.md\tchecks/a/missing.sh") });
+      run("prefetch");
+
+      assert.deepEqual(run("PreToolUse"), { status: 0, answer: {} });
+      const { answer } = run("Stop");
+      assert.equal(answer.decision, undefined);
+      assert.match(
+        answer.systemMessage ?? "",
+        /checks\/a\/missing\.sh \(a\.md\), checked before PreToolUse, could not be downloaded/,
+      );
+    });
+
+    it("keeps copies at the start of a session and says nothing", () => {
+      publish({
+        "checks/checks.tsv": manifest("PreToolUse\ta.md\tchecks/a/missing.sh"),
+      });
+
+      assert.deepEqual(run("prefetch"), { status: 0, answer: {} });
+    });
   });
 });

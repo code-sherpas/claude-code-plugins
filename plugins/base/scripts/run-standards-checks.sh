@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Claude Code `Stop` / `SubagentStop` hook: runs the automated checks of the
-# Code Sherpas software development standards. Usage:
-#   run-standards-checks.sh <event>   # hook input on stdin
+# Claude Code hook: runs the automated checks of the Code Sherpas software
+# development standards. Usage:
+#   run-standards-checks.sh <event>   # Stop, SubagentStop or PreToolUse; hook input on stdin
+#   run-standards-checks.sh prefetch  # SessionStart: only keeps copies, says nothing
 #
 # The checks are not here. Each one belongs to the standard it backs, in
 # code-sherpas/software-development-standards: `checks/checks.tsv` says which
@@ -9,7 +10,8 @@
 # script does. This runner reads that manifest from `main`, downloads the
 # scripts it names for <event>, runs them with the hook input, and turns what
 # they report into Claude Code's answer. So a check is added, changed or
-# removed there, and this plugin never changes for it.
+# removed there, and this plugin never changes for it. A row for an event this
+# runner is not called on is skipped.
 #
 # A check reports only what it found. Before each finding this runner puts
 # the name and the link of the standard the manifest says it backs. The name
@@ -21,14 +23,24 @@
 # reached the last copy is used. With no copy at all, nothing runs: the hook
 # only warns, and never stops the turn.
 #
-# What happens to the agent is decided here, the same way for every check. A
-# finding stops the turn once, so the agent decides. When Claude Code sets
-# `stop_hook_active` because the turn went on after this hook, findings only
-# warn, so a check whose finding the agent cannot clear never traps the
-# session. That warning is for the person, not the agent: it says the agent
-# ended its turn with the finding still there, what to look for in its reply,
-# and then quotes what the agent was told. A check that fails (non-zero exit) is reported and never stops
-# anything.
+# `PreToolUse` runs before every tool call, so it never downloads anything: it
+# runs only the copies kept. They are kept by `prefetch` at the start of each
+# session and refreshed at every `Stop` and `SubagentStop`, which download the
+# manifest and also the scripts and standards of its `PreToolUse` rows. So a
+# change there reaches tool calls by the next turn. When one of those cannot
+# be downloaded and has no copy, the end of the turn says so, not every tool
+# call; before any copy, tool calls are checked by nothing.
+#
+# What happens to the agent is decided here, the same way for every check. At
+# the end of a turn, a finding stops the turn once, so the agent decides. When
+# Claude Code sets `stop_hook_active` because the turn went on after this
+# hook, findings only warn, so a check whose finding the agent cannot clear
+# never traps the session. That warning is for the person, not the agent: it
+# says the agent ended its turn with the finding still there, what to look for
+# in its reply, and then quotes what the agent was told. Before a tool call, a
+# finding asks the person whether to allow the call, in every permission mode,
+# auto included, and says why. A check that fails (non-zero exit) is reported
+# and never stops or asks anything.
 #
 # For run-standards-checks.test.ts, next to this file: `STANDARDS_BASE_URL`
 # replaces the repository's raw `main` URL (a `file://` one works), and
@@ -41,6 +53,10 @@ input="$(cat)"
 
 base="${STANDARDS_BASE_URL:-https://raw.githubusercontent.com/code-sherpas/software-development-standards/main}"
 cache="${STANDARDS_CHECKS_CACHE:-${CLAUDE_PLUGIN_DATA:-${XDG_CACHE_HOME:-$HOME/.cache}/code-sherpas-base}/standards-checks}"
+
+# The events run before a tool call: only kept copies, never a download.
+tool_events=" PreToolUse "
+case "$tool_events" in *" $event "*) offline=1 ;; *) offline=0 ;; esac
 
 # Downloads <path> of the standards repository into the cache, and succeeds if
 # a copy is there afterwards: the one just downloaded or an earlier one.
@@ -56,6 +72,24 @@ fetch() {
   [ -s "$target" ]
 }
 
+# Succeeds if a copy of <path> is there: downloaded first, unless offline.
+get() {
+  if [ "$offline" = 1 ]; then [ -s "$cache/$1" ]; else fetch "$1"; fi
+}
+
+# Only a script inside a standard's own folder, backing a standard's file:
+# nothing the manifest says can make this runner fetch or run anything else.
+# Says why not, if not.
+unsafe_row() { # <standard> <script>
+  if ! [[ "$2" =~ ^checks/[a-z0-9-]+/[a-z0-9-]+\.sh$ ]]; then
+    printf 'checks.tsv names "%s", which is not a check script path; it did not run.' "$2"
+  elif ! [[ "$1" =~ ^[a-z0-9-]+\.md$ ]]; then
+    printf 'checks.tsv says "%s" backs "%s", which is not a standard'"'"'s file name; it did not run.' "$2" "$1"
+  else
+    return 1
+  fi
+}
+
 findings=""
 problems=""
 
@@ -64,26 +98,42 @@ joined() {
   if [ -n "$1" ] && [ -n "$2" ]; then printf '%s\n\n%s' "$1" "$2"; else printf '%s%s' "$1" "$2"; fi
 }
 
-if fetch "checks/checks.tsv"; then
-  ran=" "
-  tab="$(printf '\t')"
+tab="$(printf '\t')"
+
+# Keeps copies of the scripts and standards of the tool-call rows, which run
+# with no download, and says which of them has none.
+prefetch_tool_checks() {
+  local line_event standard script seen=" "
   while IFS="$tab" read -r line_event standard script || [ -n "$line_event" ]; do
-    case "$line_event" in "" | "#"*) continue ;; esac
+    case "$tool_events" in *" $line_event "*) ;; *) continue ;; esac
+    case "$seen" in *" $script "*) continue ;; esac
+    seen="$seen$script "
+    unsafe_row "$standard" "$script" >/dev/null && continue
+    fetch "$standard"
+    fetch "$script" ||
+      problems="$(joined "$problems" "$script (${standard}), checked before $line_event, could not be downloaded and no earlier copy is kept; until it is, it does not run.")"
+  done < "$cache/checks/checks.tsv"
+}
+
+if [ "$event" = prefetch ]; then
+  fetch "checks/checks.tsv" && prefetch_tool_checks
+  exit 0
+fi
+
+if get "checks/checks.tsv"; then
+  ran=" "
+  while IFS="$tab" read -r line_event standard script || [ -n "$line_event" ]; do
     [ "$line_event" = "$event" ] || continue
     case "$ran" in *" $script "*) continue ;; esac
     ran="$ran$script "
-    # Only a script inside a standard's own folder: nothing the manifest says
-    # can make this runner fetch or run anything else.
-    if ! printf '%s' "$script" | grep -Eq '^checks/[a-z0-9-]+/[a-z0-9-]+\.sh$'; then
-      problems="$(joined "$problems" "checks.tsv names \"$script\", which is not a check script path; it did not run.")"
+    if why="$(unsafe_row "$standard" "$script")"; then
+      problems="$(joined "$problems" "$why")"
       continue
     fi
-    if ! printf '%s' "$standard" | grep -Eq '^[a-z0-9-]+\.md$'; then
-      problems="$(joined "$problems" "checks.tsv says \"$script\" backs \"$standard\", which is not a standard's file name; it did not run.")"
-      continue
-    fi
-    if ! fetch "$script"; then
-      problems="$(joined "$problems" "$script (${standard}) could not be downloaded and no earlier copy is kept; it did not run.")"
+    if ! get "$script"; then
+      # Before a tool call, the end of the turn says so instead.
+      [ "$offline" = 1 ] ||
+        problems="$(joined "$problems" "$script (${standard}) could not be downloaded and no earlier copy is kept; it did not run.")"
       continue
     fi
     output="$(printf '%s' "$input" | bash "$cache/$script" 2>/dev/null)"
@@ -92,11 +142,12 @@ if fetch "checks/checks.tsv"; then
       problems="$(joined "$problems" "$script (${standard}) failed with exit status $status; what it checks was not checked.")"
     elif [ -n "$output" ]; then
       title=""
-      fetch "$standard" && title="$(sed -n 's/^# //p' "$cache/$standard" | head -1)"
+      get "$standard" && title="$(sed -n 's/^# //p' "$cache/$standard" | head -1)"
       findings="$(joined "$findings" "${title:-$standard} ($base/$standard): $output")"
     fi
   done < "$cache/checks/checks.tsv"
-else
+  [ "$offline" = 1 ] || prefetch_tool_checks
+elif [ "$offline" = 0 ]; then
   problems="$(joined "$problems" "checks/checks.tsv could not be downloaded from $base and no earlier copy is kept; no check ran.")"
 fi
 
@@ -105,6 +156,17 @@ fi
 json() { # a JSON string with the text of $1
   printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr '\t\r' '  ' | awk 'NR > 1 { printf "\\n" } { printf "%s", $0 }'
 }
+
+if [ "$offline" = 1 ]; then
+  if [ -n "$findings" ]; then
+    printf '{"hookSpecificOutput":{"hookEventName":"%s","permissionDecision":"ask","permissionDecisionReason":"%s"}' "$event" "$(json "$findings")"
+    [ -n "$problems" ] && printf ',"systemMessage":"%s"' "$(json "$problems")"
+    printf '}\n'
+  elif [ -n "$problems" ]; then
+    printf '{"systemMessage":"%s"}\n' "$(json "$problems")"
+  fi
+  exit 0
+fi
 
 if [ -n "$findings" ] && ! printf '%s' "$input" | grep -q '"stop_hook_active"[[:space:]]*:[[:space:]]*true'; then
   reason="$findings

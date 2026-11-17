@@ -190,6 +190,56 @@ describe("require-standards-index hook", () => {
     assert.ok(existsSync(join(state, "read", SESSION, "main")));
   });
 
+  // A tool's own arguments and answer can carry fields with the same names as
+  // the hook's: `archive_session` takes a `session_id`, for one. Who is
+  // asking, and with which tool, comes from the hook's fields, never from
+  // theirs. Measured 2026-11-17: `{"session_id":"self"}` in the arguments of
+  // archive_session made the hook look for `read/self/main` and refuse it
+  // forever, with the index read twice.
+  it("knows the session by the hook's session_id, not by a tool argument with that name", () => {
+    hook("SessionStart", { source: "startup" });
+    readIndex();
+
+    const answer = hook("PreToolUse", {
+      tool_name: "mcp__ccd_session_mgmt__archive_session",
+      tool_input: { session_id: "self" },
+    });
+
+    assert.deepEqual(answer, {});
+  });
+
+  it("knows the agent by the hook's agent_id, not by a tool argument with that name", () => {
+    hook("SessionStart", { source: "startup" });
+    hook("SubagentStart", asSubagent);
+    readIndex();
+
+    const answer = hook("PreToolUse", { ...asSubagent, tool_name: "Bash", tool_input: { agent_id: "main" } });
+
+    assert.ok(refused(answer));
+  });
+
+  it("knows the tool by the hook's tool_name, not by a tool argument with that name", () => {
+    hook("SessionStart", { source: "startup" });
+
+    const answer = hook("PreToolUse", { tool_name: "Bash", tool_input: { tool_name: "SubagentHandback" } });
+
+    assert.ok(refused(answer));
+  });
+
+  it("knows the file read by the Read's own file_path, not by one in its answer or elsewhere", () => {
+    hook("SessionStart", { source: "startup" });
+    const elsewhere = join(workspace, "other.md");
+
+    hook("PostToolUse", {
+      file_path: index,
+      tool_name: "Read",
+      tool_input: { file_path: elsewhere },
+      tool_response: { file_path: index },
+    });
+
+    assert.ok(refused(bash()));
+  });
+
   it("ignores an id that would escape its directory", () => {
     assert.deepEqual(
       hook("PreToolUse", { session_id: "../../etc", tool_name: "Bash", tool_input: { command: "ls" } }),

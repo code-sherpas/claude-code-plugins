@@ -40,20 +40,28 @@ base="${STANDARDS_BASE_URL:-https://raw.githubusercontent.com/code-sherpas/softw
 dir="${STANDARDS_INDEX_DIR:-${CLAUDE_PLUGIN_DATA:-${XDG_CACHE_HOME:-$HOME/.cache}/code-sherpas-base}/standards-index}"
 index="$dir/README.md"
 
-# The first string value of a top-level-looking JSON field in the hook input.
+# The hook input is read with jq, by path: a tool's arguments and answer can
+# carry fields named like the hook's (archive_session takes a `session_id`),
+# and a text match cannot tell them apart. Without jq nothing is required, as
+# with no index: refusing every tool on a machine that lacks it would trap
+# each agent there, and a guess at who is asking could trap one too.
+command -v jq >/dev/null 2>&1 || exit 0
+
+# A string at a path of the hook input (`.session_id`, `.tool_input.file_path`),
+# or nothing if it is missing or not a string.
 field() {
-  printf '%s' "$input" | sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p" | head -1
+  printf '%s' "$input" | jq -r "$1 | strings" 2>/dev/null
 }
 
-# The first number value of a JSON field in the hook input.
+# A whole number at a path of the hook input, or nothing.
 number() {
-  printf '%s' "$input" | sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\\([0-9][0-9]*\\).*/\\1/p" | head -1
+  printf '%s' "$input" | jq -r "$1 | numbers | floor" 2>/dev/null
 }
 
-session="$(field session_id)"
+session="$(field .session_id)"
 [ -n "$session" ] || exit 0
 case "$session" in */* | *..*) exit 0 ;; esac
-agent="$(field agent_id)"
+agent="$(field .agent_id)"
 agent="${agent:-main}"
 case "$agent" in */* | *..*) exit 0 ;; esac
 record="$dir/read/$session/$agent"
@@ -92,9 +100,9 @@ case "$event" in
     ;;
 
   PostToolUse)
-    [ "$(field tool_name)" = "Read" ] && [ "$(field file_path)" = "$index" ] || exit 0
-    offset="$(number offset)"
-    limit="$(number limit)"
+    [ "$(field .tool_name)" = "Read" ] && [ "$(field .tool_input.file_path)" = "$index" ] || exit 0
+    offset="$(number .tool_input.offset)"
+    limit="$(number .tool_input.limit)"
     lines="$(wc -l < "$index" 2>/dev/null | tr -d ' ')"
     [ -z "$offset" ] || [ "$offset" -le 1 ] || exit 0
     [ -z "$limit" ] || [ "$limit" -ge "${lines:-0}" ] || exit 0
@@ -104,9 +112,9 @@ case "$event" in
   PreToolUse)
     [ -e "$record" ] && exit 0
     [ -s "$index" ] || exit 0
-    tool="$(field tool_name)"
+    tool="$(field .tool_name)"
     [ "$tool" = "SubagentHandback" ] && exit 0
-    [ "$tool" = "Read" ] && [ "$(field file_path)" = "$index" ] && exit 0
+    [ "$tool" = "Read" ] && [ "$(field .tool_input.file_path)" = "$index" ] && exit 0
     printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"%s"}}\n' "$(json "$(instruction)")"
     ;;
 esac

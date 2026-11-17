@@ -1,5 +1,5 @@
 {
-  "description": "Two jobs. Before any work, every agent and sub-agent reads the index of the Code Sherpas software development standards: it is downloaded at each start, and every other tool is refused until it is read. At the end of a turn, the automated checks the standards declare run; each check lives next to the standard it backs, in code-sherpas/software-development-standards, whose checks/checks.tsv says which runs on which event, and each check's message names its standard and links it.",
+  "description": "Two jobs. Before any work, every agent and sub-agent reads the index of the Code Sherpas software development standards: it is downloaded at each start, and every other tool is refused until it is read. At the end of a turn and before each tool call, the automated checks the standards declare run; each check lives next to the standard it backs, in code-sherpas/software-development-standards, whose checks/checks.tsv says which runs on which event, and each check's message names its standard and links it. Before a tool call only copies kept at the start of the session and at the end of each turn run, never a download.",
   "hooks": {
     "Stop": [
       {
@@ -30,6 +30,11 @@
             "type": "command",
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/require-standards-index.sh\" SessionStart",
             "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/run-standards-checks.sh\" prefetch",
+            "timeout": 30
           }
         ]
       }
@@ -51,6 +56,11 @@
           {
             "type": "command",
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/require-standards-index.sh\" PreToolUse",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/run-standards-checks.sh\" PreToolUse",
             "timeout": 10
           }
         ]

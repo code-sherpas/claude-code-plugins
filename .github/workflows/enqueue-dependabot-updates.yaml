@@ -1,0 +1,26 @@
+name: Enqueue Dependabot minor and patch updates
+
+# Puts Dependabot's minor and patch pull requests in the merge queue, with no
+# person in between. The logic lives in code-sherpas/.github; read its header
+# before changing this. The agent-skills submodule pull requests are
+# enqueued by enqueue-dependabot.yaml instead: they carry no semver bump, so
+# this one leaves them alone.
+#
+# ⚠️ For those pull requests this waives Gate 3 of `pre-merge-gates` and
+# `post-deploy-verification`: waived explicitly by David on 2026-11-23 for
+# every repository of Code Sherpas. The checks this repository requires on
+# `main` are the only check these bumps get.
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  enqueue:
+    uses: code-sherpas/.github/.github/workflows/enqueue-dependabot-updates.yaml@v1
+    secrets: inherit
